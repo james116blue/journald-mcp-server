@@ -7,7 +7,8 @@ requires-python = ">=3.12"
 dependencies = [
     "mcp[cli]>=1.23.1",
     "systemd-python>=235",
-    "click>=8.2.0"
+    "click>=8.2.0",
+    "dateparser>=1.2.0"
 ]
 
 [dependency-groups]

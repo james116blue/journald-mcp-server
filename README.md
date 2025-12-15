@@ -5,7 +5,11 @@ An MCP server for accessing systemd journal logs.
 ## Features
 
 - List systemd units from journal logs
-- Access journal entries (TODO)
+- List syslog identifiers from journal logs
+- Get datetime of first journal entry
+- Filter journal entries by datetime range (since/until)
+- Filter by systemd unit or syslog identifier
+- Natural language datetime parsing (e.g., "2 hours ago", "yesterday at 3pm")
 
 ## Installation
 
@@ -52,10 +56,30 @@ python server.py [OPTIONS]
 
 ## MCP Integration
 
-The server provides the following MCP resources:
+The server provides the following MCP resources and tools:
 
-- `journal://units`: List unique systemd units from the last 30 minutes of journal logs
-- `journal://syslog-identifiers`: List unique syslog identifiers from the last 30 minutes of journal logs
+### Resources
+- `journal://units`: List unique systemd units from journal logs (all accessible time)
+- `journal://syslog-identifiers`: List unique syslog identifiers from journal logs (all accessible time)
+- `journal://first-entry-datetime`: Get the datetime of the first entry in the journal
+
+### Tools
+- `get_journal_entries`: Get journal entries with datetime filtering
+  - Parameters: `since` (optional), `until` (optional), `unit` (optional), `identifier` (optional), `limit` (default: 100)
+  - Returns: List of entries with timestamp, unit, identifier, and message
+  - Example: Get logs from last 2 hours: `since="2 hours ago"`
+  
+- `get_recent_logs`: Get recent journal logs from the last N minutes
+  - Parameters: `minutes` (default: 60), `unit` (optional), `limit` (default: 50)
+  - Returns: Formatted string of recent log messages
+
+### Datetime Input Format
+The server uses natural language datetime parsing via the `dateparser` library. Supported formats include:
+- Relative times: "2 hours ago", "yesterday at 3pm", "last week", "now"
+- Absolute times: "2024-01-15 14:30", "2024-01-15T14:30:00"
+- Mixed: "today at 9am", "tomorrow 3pm"
+
+All times are interpreted as UTC and returned in human-readable format: "YYYY-MM-DD HH:MM:SS UTC"
 
 ## Development
 
@@ -64,6 +88,7 @@ This project uses:
 - [MCP](https://modelcontextprotocol.io) FastMCP
 - systemd-python for journal access
 - Click for CLI interface
+- dateparser for natural language datetime parsing
 
 ### Project Structure
 
@@ -71,7 +96,8 @@ This project uses:
 journald-mcp-server/
 ├── journald_mcp_server/     # Main package
 │   ├── __init__.py
-│   └── server.py           # MCP server implementation
+│   ├── server.py           # MCP server implementation
+│   └── datetime_utils.py   # Datetime parsing and formatting utilities
 ├── tests/                  # Test suite
 │   ├── __init__.py
 │   └── test_server.py
