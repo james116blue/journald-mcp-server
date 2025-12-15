@@ -55,6 +55,104 @@ def get_first_entry_datetime() -> str:
     else:
         return "No timestamp found in first entry"
 
+
+@mcp.resource("journal://units/{since}/{until}")
+def list_journal_units_by_time(since: str, until: str) -> List[str]:
+    """
+    Collects unique systemd units from journald logs within a specified time range.
+    
+    Args:
+        since: Start datetime (e.g., "2 hours ago", "2024-01-15 14:30")
+        until: End datetime (e.g., "now", "1 hour ago", "2024-01-15 15:30")
+        
+    Returns:
+        List of unique systemd unit names found in the specified time range
+    """
+    try:
+        # Parse datetime inputs
+        since_dt = datetime_utils.parse_datetime_input(since)
+        until_dt = datetime_utils.parse_datetime_input(until)
+        
+        # Create journal reader
+        j = journal.Reader()
+        j.seek_realtime(since_dt)
+        
+        # Collect unique units within time range
+        units = set()
+        for entry in j:
+            # Check if we've passed the until time
+            timestamp_val = entry.get("__REALTIME_TIMESTAMP")
+            if timestamp_val:
+                try:
+                    entry_dt = datetime_utils.journal_timestamp_to_datetime(timestamp_val)
+                    if entry_dt > until_dt:
+                        break
+                except ValueError:
+                    # Skip entries with invalid timestamps
+                    continue
+            
+            # Add unit if present
+            unit = entry.get("_SYSTEMD_UNIT")
+            if unit:
+                units.add(unit)
+        
+        return list(units)
+        
+    except ValueError as e:
+        return [f"Error parsing datetime input: {str(e)}"]
+    except Exception as e:
+        logger.error(f"Error getting units by time: {e}", exc_info=True)
+        return [f"Internal error: {str(e)}"]
+
+
+@mcp.resource("journal://syslog-identifiers/{since}/{until}")
+def list_syslog_identifiers_by_time(since: str, until: str) -> List[str]:
+    """
+    Collects unique syslog identifiers from journald logs within a specified time range.
+    
+    Args:
+        since: Start datetime (e.g., "2 hours ago", "2024-01-15 14:30")
+        until: End datetime (e.g., "now", "1 hour ago", "2024-01-15 15:30")
+        
+    Returns:
+        List of unique syslog identifiers found in the specified time range
+    """
+    try:
+        # Parse datetime inputs
+        since_dt = datetime_utils.parse_datetime_input(since)
+        until_dt = datetime_utils.parse_datetime_input(until)
+        
+        # Create journal reader
+        j = journal.Reader()
+        j.seek_realtime(since_dt)
+        
+        # Collect unique identifiers within time range
+        identifiers = set()
+        for entry in j:
+            # Check if we've passed the until time
+            timestamp_val = entry.get("__REALTIME_TIMESTAMP")
+            if timestamp_val:
+                try:
+                    entry_dt = datetime_utils.journal_timestamp_to_datetime(timestamp_val)
+                    if entry_dt > until_dt:
+                        break
+                except ValueError:
+                    # Skip entries with invalid timestamps
+                    continue
+            
+            # Add identifier if present
+            identifier = entry.get("SYSLOG_IDENTIFIER")
+            if identifier:
+                identifiers.add(identifier)
+        
+        return list(identifiers)
+        
+    except ValueError as e:
+        return [f"Error parsing datetime input: {str(e)}"]
+    except Exception as e:
+        logger.error(f"Error getting identifiers by time: {e}", exc_info=True)
+        return [f"Internal error: {str(e)}"]
+
 # Tools
 @mcp.tool()
 def get_journal_entries(
@@ -62,18 +160,21 @@ def get_journal_entries(
     until: Optional[str] = None,
     unit: Optional[str] = None,
     identifier: Optional[str] = None,
+    message_contains: Optional[str] = None,
     limit: int = 100
 ) -> List[Dict[str, str]]:
     """
     Get journal entries with datetime filtering.
     
-    Supports filtering by time range (since/until), systemd unit, and syslog identifier.
+    Supports filtering by time range (since/until), systemd unit, syslog identifier,
+    and message content.
     
     Args:
         since: Start datetime (e.g., "2 hours ago", "2024-01-15 14:30")
         until: End datetime (e.g., "now", "1 hour ago", "2024-01-15 15:30")
         unit: Filter by systemd unit name
         identifier: Filter by syslog identifier
+        message_contains: Filter by substring in message content (case-insensitive)
         limit: Maximum number of entries to return (default: 100)
         
     Returns:
@@ -110,11 +211,18 @@ def get_journal_entries(
                 timestamp_val = entry.get("__REALTIME_TIMESTAMP")
                 if timestamp_val:
                     try:
-                        if timestamp_val > until_dt:
+                        entry_dt = datetime_utils.journal_timestamp_to_datetime(timestamp_val)
+                        if entry_dt > until_dt:
                             break
-                    except (ValueError, TypeError):
+                    except ValueError:
                         # Skip entries with invalid timestamps
                         continue
+            
+            # Apply message_contains filter if specified
+            if message_contains:
+                message = entry.get("MESSAGE", "")
+                if message_contains.lower() not in message.lower():
+                    continue  # Skip entries that don't contain the substring
             
             # Format the entry
             formatted_entry = {

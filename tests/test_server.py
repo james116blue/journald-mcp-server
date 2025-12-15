@@ -10,6 +10,8 @@ from journald_mcp_server import (
     list_journal_units, 
     list_syslog_identifiers, 
     get_first_entry_datetime,
+    list_journal_units_by_time,
+    list_syslog_identifiers_by_time,
     get_journal_entries,
     get_recent_logs,
     datetime_utils
@@ -231,6 +233,182 @@ def test_get_recent_logs_no_logs():
         
         result = get_recent_logs(minutes=60)
         assert "No logs found in the last 60 minutes" in result
+
+
+def test_get_journal_entries_message_contains():
+    """Test get_journal_entries with message_contains filtering."""
+    mock_entries = [
+        {
+            "__REALTIME_TIMESTAMP": 1609459200000000,
+            "_SYSTEMD_UNIT": "ssh.service",
+            "SYSLOG_IDENTIFIER": "sshd",
+            "MESSAGE": "User login from 192.168.1.1"
+        },
+        {
+            "__REALTIME_TIMESTAMP": 1609459260000000,
+            "_SYSTEMD_UNIT": "cron.service",
+            "SYSLOG_IDENTIFIER": "cron",
+            "MESSAGE": "Daily backup completed"
+        },
+        {
+            "__REALTIME_TIMESTAMP": 1609459320000000,
+            "_SYSTEMD_UNIT": "ssh.service",
+            "SYSLOG_IDENTIFIER": "sshd",
+            "MESSAGE": "Failed login attempt"
+        },
+    ]
+    
+    with patch("journald_mcp_server.server.journal.Reader") as mock_reader:
+        mock_j = Mock()
+        # Create a function that returns a fresh iterator each time
+        mock_j.__iter__ = Mock(side_effect=lambda: iter(mock_entries))
+        mock_j.add_match = Mock()
+        mock_reader.return_value = mock_j
+        
+        # Test filtering for "login" (should match first and third entries)
+        result = get_journal_entries(message_contains="login", limit=10)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert all("login" in entry["message"].lower() for entry in result)
+        
+        # Test case-insensitive filtering
+        result = get_journal_entries(message_contains="LOGIN", limit=10)
+        assert len(result) == 2  # Should still match due to case-insensitive comparison
+        
+        # Test filtering for "backup" (should match only second entry)
+        result = get_journal_entries(message_contains="backup", limit=10)
+        assert len(result) == 1
+        assert "backup" in result[0]["message"].lower()
+
+
+def test_get_journal_entries_message_contains_no_match():
+    """Test get_journal_entries with message_contains that matches nothing."""
+    mock_entries = [
+        {
+            "__REALTIME_TIMESTAMP": 1609459200000000,
+            "_SYSTEMD_UNIT": "ssh.service",
+            "SYSLOG_IDENTIFIER": "sshd",
+            "MESSAGE": "User login"
+        },
+    ]
+    
+    with patch("journald_mcp_server.server.journal.Reader") as mock_reader:
+        mock_j = Mock()
+        mock_j.__iter__ = Mock(return_value=iter(mock_entries))
+        mock_j.add_match = Mock()
+        mock_reader.return_value = mock_j
+        
+        result = get_journal_entries(message_contains="nonexistent", limit=10)
+        assert isinstance(result, list)
+        assert len(result) == 0  # No matches
+
+
+def test_list_journal_units_by_time_mocked():
+    """Test list_journal_units_by_time with mocked journal."""
+    mock_entries = [
+        {
+            "__REALTIME_TIMESTAMP": 1609459200000000,  # 2021-01-01 00:00:00 UTC
+            "_SYSTEMD_UNIT": "ssh.service"
+        },
+        {
+            "__REALTIME_TIMESTAMP": 1609459260000000,  # 2021-01-01 00:01:00 UTC
+            "_SYSTEMD_UNIT": "nginx.service"
+        },
+        {
+            "__REALTIME_TIMESTAMP": 1609459320000000,  # 2021-01-01 00:02:00 UTC (outside range)
+            "_SYSTEMD_UNIT": "cron.service"
+        },
+        {
+            "__REALTIME_TIMESTAMP": 1609459200000000,  # 2021-01-01 00:00:00 UTC
+            "_SYSTEMD_UNIT": "ssh.service"  # duplicate
+        },
+        {},  # missing timestamp and unit
+    ]
+    
+    with patch("journald_mcp_server.server.journal.Reader") as mock_reader:
+        mock_j = Mock()
+        mock_j.__iter__ = Mock(return_value=iter(mock_entries))
+        mock_reader.return_value = mock_j
+        
+        # Mock datetime parsing to return fixed times
+        with patch("journald_mcp_server.datetime_utils.parse_datetime_input") as mock_parse:
+            # Mock since to be 2021-01-01 00:00:00 UTC
+            # Mock until to be 2021-01-01 00:01:30 UTC (between second and third entry)
+            mock_since_dt = datetime(2021, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+            mock_until_dt = datetime(2021, 1, 1, 0, 1, 30, tzinfo=timezone.utc)
+            mock_parse.side_effect = [mock_since_dt, mock_until_dt]
+            
+            result = list_journal_units_by_time(since="2021-01-01 00:00:00", until="2021-01-01 00:01:30")
+            
+            assert isinstance(result, list)
+            # Should include ssh.service and nginx.service but not cron.service (outside range)
+            assert set(result) == {"ssh.service", "nginx.service"}
+
+
+def test_list_journal_units_by_time_invalid_datetime():
+    """Test list_journal_units_by_time with invalid datetime input."""
+    with patch("journald_mcp_server.datetime_utils.parse_datetime_input") as mock_parse:
+        mock_parse.side_effect = ValueError("Invalid datetime format")
+        
+        result = list_journal_units_by_time(since="invalid", until="also invalid")
+        
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert "Error parsing datetime input" in result[0]
+
+
+def test_list_syslog_identifiers_by_time_mocked():
+    """Test list_syslog_identifiers_by_time with mocked journal."""
+    mock_entries = [
+        {
+            "__REALTIME_TIMESTAMP": 1609459200000000,  # 2021-01-01 00:00:00 UTC
+            "SYSLOG_IDENTIFIER": "sshd"
+        },
+        {
+            "__REALTIME_TIMESTAMP": 1609459260000000,  # 2021-01-01 00:01:00 UTC
+            "SYSLOG_IDENTIFIER": "cron"
+        },
+        {
+            "__REALTIME_TIMESTAMP": 1609459320000000,  # 2021-01-01 00:02:00 UTC (outside range)
+            "SYSLOG_IDENTIFIER": "dbus"
+        },
+        {
+            "__REALTIME_TIMESTAMP": 1609459200000000,  # 2021-01-01 00:00:00 UTC
+            "SYSLOG_IDENTIFIER": "sshd"  # duplicate
+        },
+        {},  # missing timestamp and identifier
+    ]
+    
+    with patch("journald_mcp_server.server.journal.Reader") as mock_reader:
+        mock_j = Mock()
+        mock_j.__iter__ = Mock(return_value=iter(mock_entries))
+        mock_reader.return_value = mock_j
+        
+        # Mock datetime parsing to return fixed times
+        with patch("journald_mcp_server.datetime_utils.parse_datetime_input") as mock_parse:
+            # Mock since to be 2021-01-01 00:00:00 UTC
+            # Mock until to be 2021-01-01 00:01:30 UTC (between second and third entry)
+            mock_since_dt = datetime(2021, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+            mock_until_dt = datetime(2021, 1, 1, 0, 1, 30, tzinfo=timezone.utc)
+            mock_parse.side_effect = [mock_since_dt, mock_until_dt]
+            
+            result = list_syslog_identifiers_by_time(since="2021-01-01 00:00:00", until="2021-01-01 00:01:30")
+            
+            assert isinstance(result, list)
+            # Should include sshd and cron but not dbus (outside range)
+            assert set(result) == {"sshd", "cron"}
+
+
+def test_list_syslog_identifiers_by_time_invalid_datetime():
+    """Test list_syslog_identifiers_by_time with invalid datetime input."""
+    with patch("journald_mcp_server.datetime_utils.parse_datetime_input") as mock_parse:
+        mock_parse.side_effect = ValueError("Invalid datetime format")
+        
+        result = list_syslog_identifiers_by_time(since="invalid", until="also invalid")
+        
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert "Error parsing datetime input" in result[0]
 
 
 def test_main_cli():

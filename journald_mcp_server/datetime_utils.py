@@ -110,6 +110,57 @@ def format_journal_timestamp(timestamp_val: Union[int, float, datetime, str]) ->
     return dt.isoformat()
 
 
+def journal_timestamp_to_datetime(timestamp_val: Union[int, float, datetime, str]) -> datetime:
+    """
+    Convert journal entry timestamp to datetime object.
+    
+    Handles different timestamp formats from journal entries:
+    - Microseconds since epoch (int/float)
+    - datetime objects
+    - ISO format strings
+    
+    Args:
+        timestamp_val: Timestamp value from journal entry
+        
+    Returns:
+        datetime: UTC datetime object
+        
+    Raises:
+        ValueError: If timestamp cannot be converted
+    """
+    if timestamp_val is None:
+        raise ValueError("Timestamp value is None")
+    
+    if isinstance(timestamp_val, (int, float)):
+        # Convert microseconds to seconds and create datetime
+        # Journal timestamps are typically in microseconds since epoch
+        timestamp_s = timestamp_val / 1_000_000
+        dt = datetime.fromtimestamp(timestamp_s, tz=timezone.utc)
+        return dt
+    
+    elif isinstance(timestamp_val, datetime):
+        dt = timestamp_val
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
+    
+    elif isinstance(timestamp_val, str):
+        try:
+            dt = datetime.fromisoformat(timestamp_val)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+            return dt
+        except (ValueError, AttributeError):
+            raise ValueError(f"Unsupported timestamp string format: {timestamp_val}")
+    
+    else:
+        raise ValueError(f"Unsupported timestamp type: {type(timestamp_val)}")
+
+
 def format_journal_timestamp_human(timestamp_val: Union[int, float, datetime, str]) -> str:
     """
     Format journal entry timestamp into more human-readable string.

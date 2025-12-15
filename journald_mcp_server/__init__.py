@@ -7,6 +7,8 @@ from .server import (
     list_journal_units, 
     list_syslog_identifiers, 
     get_first_entry_datetime,
+    list_journal_units_by_time,
+    list_syslog_identifiers_by_time,
     get_journal_entries,
     get_recent_logs,
     main
@@ -19,6 +21,8 @@ __all__ = [
     "list_journal_units", 
     "list_syslog_identifiers", 
     "get_first_entry_datetime",
+    "list_journal_units_by_time",
+    "list_syslog_identifiers_by_time",
     "get_journal_entries",
     "get_recent_logs",
     "datetime_utils",
