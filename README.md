@@ -9,9 +9,12 @@ An MCP server for accessing systemd journal logs.
 - Get datetime of first journal entry
 - Filter journal entries by datetime range (since/until)
 - Filter by systemd unit or syslog identifier
+- Filter by message content (case-insensitive substring matching)
 - Natural language datetime parsing (e.g., "2 hours ago", "yesterday at 3pm")
+- List units and identifiers within specific time ranges
 
 ## Installation
+
 
 ```bash
 # Install dependencies
@@ -19,11 +22,12 @@ uv sync
 ```
 
 ## Usage
+Run as non-root: Give the user systemd-journal group access  `usermod -aG systemd-journal $USER`
 
 Run the server with:
 
 ```bash
-python server.py [OPTIONS]
+uv run server.py [OPTIONS]
 ```
 
 ### CLI Options
@@ -62,12 +66,14 @@ The server provides the following MCP resources and tools:
 - `journal://units`: List unique systemd units from journal logs (all accessible time)
 - `journal://syslog-identifiers`: List unique syslog identifiers from journal logs (all accessible time)
 - `journal://first-entry-datetime`: Get the datetime of the first entry in the journal
+- `journal://units/{since}/{until}`: List unique systemd units within a specified time range
+- `journal://syslog-identifiers/{since}/{until}`: List unique syslog identifiers within a specified time range
 
 ### Tools
 - `get_journal_entries`: Get journal entries with datetime filtering
-  - Parameters: `since` (optional), `until` (optional), `unit` (optional), `identifier` (optional), `limit` (default: 100)
+  - Parameters: `since` (optional), `until` (optional), `unit` (optional), `identifier` (optional), `message_contains` (optional), `limit` (default: 100)
   - Returns: List of entries with timestamp, unit, identifier, and message
-  - Example: Get logs from last 2 hours: `since="2 hours ago"`
+  - Example: Get logs from last 2 hours containing "error": `since="2 hours ago", message_contains="error"`
   
 - `get_recent_logs`: Get recent journal logs from the last N minutes
   - Parameters: `minutes` (default: 60), `unit` (optional), `limit` (default: 50)
