@@ -27,6 +27,14 @@ def list_journal_units() -> List[str]:
     units = {entry.get("_SYSTEMD_UNIT") for entry in j}
     return list(units)
 
+@mcp.resource("journal://syslog-identifiers")
+def list_syslog_identifiers() -> List[str]:
+    """Collects unique syslog identifiers from the journald logs for last 30 minutes"""
+    j = journal.Reader()
+    j.seek_realtime(datetime.now() - timedelta(minutes=30))
+    identifiers = {entry.get("SYSLOG_IDENTIFIER") for entry in j if entry.get("SYSLOG_IDENTIFIER")}
+    return list(identifiers)
+
 # Tools
 # @mcp.tool()
 # def get_last_log(n_minutes: int, n_messages: int) -> str:
@@ -39,25 +47,38 @@ def list_journal_units() -> List[str]:
 
 # CLI
 @click.command()
-@click.option("--port", default=3002, help="Port to listen on for HTTP")
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "sse", "streamable-http"]),
+    default="stdio",
+    help="Transport protocol to use (stdio, sse, or streamable-http)",
+)
+@click.option(
+    "--port", 
+    default=3002, 
+    help="Port to listen on for HTTP transport (ignored for stdio transport)"
+)
 @click.option(
     "--log-level",
     default="INFO",
     help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
 )
-def main(port: int, log_level: str) -> int:
-    """Run the MCP Everything Server."""
+def main(transport: str, port: int, log_level: str) -> int:
+    """Run the Journald MCP Server."""
     logging.basicConfig(
         level=getattr(logging, log_level.upper()),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         stream=sys.stderr,
     )
 
-    logger.info(f"Starting journald MCP  Server on port {port}")
-    logger.info(f"Endpoint will be: http://localhost:{port}/mcp")
+    if transport in ["sse", "streamable-http"]:
+        logger.info(f"Starting journald MCP Server with {transport} transport on port {port}")
+        logger.info(f"Endpoint will be: http://localhost:{port}/mcp")
+        mcp.settings.port = port
+    else:
+        logger.info(f"Starting journald MCP Server with {transport} transport")
 
-    mcp.settings.port = port
-    mcp.run(transport="streamable-http")
+    mcp.run(transport=transport)
 
     return 0
 
