@@ -64,3 +64,24 @@ This project uses:
 - [MCP](https://modelcontextprotocol.io) FastMCP
 - systemd-python for journal access
 - Click for CLI interface
+
+### Project Structure
+
+```
+journald-mcp-server/
+├── journald_mcp_server/     # Main package
+│   ├── __init__.py
+│   └── server.py           # MCP server implementation
+├── tests/                  # Test suite
+│   ├── __init__.py
+│   └── test_server.py
+├── server.py              # Entry point wrapper
+├── pyproject.toml
+└── README.md
+```
+
+### Running Tests
+
+```bash
+python -m pytest tests/
+```

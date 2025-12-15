@@ -9,3 +9,8 @@ dependencies = [
     "systemd-python>=235",
     "click>=8.2.0"
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
